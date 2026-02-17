@@ -5,6 +5,7 @@ import pygame
 import jax
 import jax.random as jrandom
 import numpy as np
+import traceback
 
 from jaxatari.environment import JAXAtariAction
 from utils import get_human_action, update_pygame, load_game_environment, load_game_mods
@@ -83,6 +84,30 @@ def main():
     )
 
     args = parser.parse_args()
+
+    def safe_get_events():
+        """Try to pump and get pygame events, but never let C-level errors escape.
+
+        Returns a list (possibly empty) of events.
+        """
+        try:
+            # Ensure internal queue is pumped
+            pygame.event.pump()
+        except Exception:
+            # ignore pump errors
+            pass
+        try:
+            # Try to fetch only the event types we care about (QUIT and KEYDOWN).
+            # On some platforms, parsing certain event payloads can raise C-level
+            # errors; restricting types reduces exposure to those bugs.
+            return list(pygame.event.get([pygame.QUIT, pygame.KEYDOWN]))
+        except Exception:
+            try:
+                return list(pygame.event.get())
+            except Exception:
+                # Avoid printing C-level traceback here (it exposes internal KeyError noise).
+                print("safe_get_events: pygame.event.get() failed; continuing without events.")
+                return []
 
     execute_without_rendering = False
     
@@ -199,12 +224,20 @@ def main():
                 clock.tick(frame_rate)
 
                 # Check for quit event
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT or (
-                        event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
-                    ):
-                        pygame.quit()
-                        sys.exit(0)
+                events = safe_get_events()
+
+                for event in events:
+                    try:
+                        if event.type == pygame.QUIT or (
+                            event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
+                        ):
+                            pygame.quit()
+                            sys.exit(0)
+                    except Exception as e:
+                        print("Exception while handling event:", repr(event), type(e), e)
+                        traceback.print_exc()
+                        continue
+                
 
         if not execute_without_rendering:
             pygame.quit()
@@ -220,22 +253,29 @@ def main():
     while running:
         # check for external actions
         if not execute_without_rendering:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
+            events = safe_get_events()
+
+            for event in events:
+                try:
+                    if event.type == pygame.QUIT:
+                        running = False
+                        continue
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_p:  # pause
+                            pause = not pause
+                        elif event.key == pygame.K_r:  # reset
+                            reset_key = jrandom.fold_in(master_key, reset_counter)
+                            obs, state = jitted_reset(reset_key)
+                            reset_counter += 1
+                            total_return = 0
+                        elif event.key == pygame.K_f:
+                            frame_by_frame = not frame_by_frame
+                        elif event.key == pygame.K_n:
+                            next_frame_asked = True
+                except Exception as e:
+                    print("Exception while handling event:", repr(event), type(e), e)
+                    traceback.print_exc()
                     continue
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_p:  # pause
-                        pause = not pause
-                    elif event.key == pygame.K_r:  # reset
-                        reset_key = jrandom.fold_in(master_key, reset_counter)
-                        obs, state = jitted_reset(reset_key)
-                        reset_counter += 1
-                        total_return = 0
-                    elif event.key == pygame.K_f:
-                        frame_by_frame = not frame_by_frame
-                    elif event.key == pygame.K_n:
-                        next_frame_asked = True
 
             if pause or (frame_by_frame and not next_frame_asked):
                 image = jitted_render(state)

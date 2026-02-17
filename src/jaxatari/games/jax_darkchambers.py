@@ -144,7 +144,7 @@ class DarkChambersConstants(NamedTuple):
     SKELETON_COLOR: Tuple[int, int, int] = (220, 220, 200)  # Bone white
     WIZARD_COLOR: Tuple[int, int, int] = (150, 80, 200)  # Purple
     GRIM_REAPER_COLOR: Tuple[int, int, int] = (50, 50, 50)  # Dark gray/black
-    WALL_COLOR: Tuple[int, int, int] = (150, 120, 70)
+    WALL_COLOR: Tuple[int, int, int] = (230, 110, 110)  # Pink
     HEART_COLOR: Tuple[int, int, int] = (220, 30, 30)
     POISON_COLOR: Tuple[int, int, int] = (50, 200, 50)  # Green poison
     TRAP_COLOR: Tuple[int, int, int] = (120, 70, 20)     # Brown trap
@@ -168,8 +168,8 @@ class DarkChambersConstants(NamedTuple):
     PLAYER_SPEED: int = 2
     WALL_THICKNESS: int = 8
     
-    PLAYER_START_X: int = 24
-    PLAYER_START_Y: int = 24
+    PLAYER_START_X: int = 100
+    PLAYER_START_Y: int = 350
     
     # Health mechanics (scaled to classic 31 strength units)
     MAX_HEALTH: int = 31
@@ -452,23 +452,60 @@ class DarkChambersRenderer(JAXGameRenderer):
         # Walls in world coordinates - format: [x, y, width, height]
         # Multiple levels with different layouts
         # Shape: (MAX_LEVELS, max_walls_per_level, 4)
+        # Wall thickness for borders (ALE-style thinner walls)
+        WT = 12  # wall thickness for borders/horizontal bars (thinner like ALE)
+        VT = 12  # vertical pillar thickness
+        INNER_COL_W = 12  # inner column width
+        
+        # ALE Layout from images:
+        # - Thin outer walls attached to screen edges
+        # - Inner columns creating corridors - shorter height
+        # - Horizontal bars connecting outer wall to inner column
+        # - Center vertical pillar with bottom T-bar
+        
+        CENTER_X = self.consts.WORLD_WIDTH // 2 - VT // 2
+        LEFT_INNER_X = 40  # inner column position (closer to edge)
+        RIGHT_INNER_X = self.consts.WORLD_WIDTH - 40 - INNER_COL_W
+        ALCOVE_HEIGHT = 100  # shorter alcove columns
+        
         level_0_walls = jnp.array([
-            # Border
-            [0, 0, self.consts.WORLD_WIDTH, self.consts.WALL_THICKNESS],
-            [0, self.consts.WORLD_HEIGHT - self.consts.WALL_THICKNESS, 
-             self.consts.WORLD_WIDTH, self.consts.WALL_THICKNESS],
-            [0, 0, self.consts.WALL_THICKNESS, self.consts.WORLD_HEIGHT],
-            [self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, 0, 
-             self.consts.WALL_THICKNESS, self.consts.WORLD_HEIGHT],
-            # Labyrinth structure - Level 0
-            [60, 80, 120, 8],
-            [200, 150, 80, 8],
-            [80, 200, 100, 8],
-            [40, 280, 140, 8],
-            [220, 50, 8, 140],
-            [120, 180, 8, 100],
-            [280, 120, 8, 160],
-            [160, 300, 8, 80],
+            # === OUTER BORDERS (attached to screen edges) ===
+            # Top border - full width
+            [0, 0, self.consts.WORLD_WIDTH, WT],
+            # Bottom border - full width
+            [0, self.consts.WORLD_HEIGHT - WT, self.consts.WORLD_WIDTH, WT],
+            
+            # Left outer wall - full height (no gap)
+            [0, WT, WT, self.consts.WORLD_HEIGHT - 2 * WT],
+            
+            # Right outer wall - full height (no gap)
+            [self.consts.WORLD_WIDTH - WT, WT, WT, self.consts.WORLD_HEIGHT - 2 * WT],
+            
+            # === LEFT ALCOVE (top-left room with door) ===
+            # Left inner vertical column - going down from top (shorter)
+            [LEFT_INNER_X, WT, INNER_COL_W, ALCOVE_HEIGHT],
+            # Horizontal bar connecting left outer to inner (bottom of alcove)
+            [WT, WT + ALCOVE_HEIGHT - WT, LEFT_INNER_X - WT, WT],
+            
+            # === RIGHT ALCOVE (top-right room with door) ===
+            # Right inner vertical column - going down from top (shorter)
+            [RIGHT_INNER_X, WT, INNER_COL_W, ALCOVE_HEIGHT],
+            # Horizontal bar connecting right inner to outer (bottom of alcove)
+            [RIGHT_INNER_X + INNER_COL_W, WT + ALCOVE_HEIGHT - WT, self.consts.WORLD_WIDTH - WT - RIGHT_INNER_X - INNER_COL_W, WT],
+            
+            # === CENTER VERTICAL PILLAR (upside-down T stem) ===
+            [CENTER_X, WT, VT, 280 - WT],
+            
+            # === BOTTOM HORIZONTAL BAR (upside-down T bar) ===
+            [LEFT_INNER_X + INNER_COL_W, 280, RIGHT_INNER_X - LEFT_INNER_X - INNER_COL_W, WT],
+            
+            # Padding to match level_1_walls (16 total)
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
         ], dtype=jnp.int32)
         
         level_1_walls = jnp.array([
@@ -486,8 +523,13 @@ class DarkChambersRenderer(JAXGameRenderer):
             [60, 320, 100, 8],
             [250, 80, 8, 120],
             [140, 150, 8, 140],
-            [260, 200, 8, 140],
-            [80, 340, 8, 60],
+            # Padding to match level_0_walls shape (16 total)
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
         ], dtype=jnp.int32)
 
         # Create additional levels by offsetting and varying walls
@@ -1923,7 +1965,7 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
                 - collected_poison * self.consts.POISON_DAMAGE
                 - collected_traps * self.consts.TRAP_DAMAGE
             )
-            new_health = jnp.clip(state.health + health_change, 0, self.consts.MAX_HEALTH)
+            new_health = jnp.clip(state.health + health_change, 1, self.consts.MAX_HEALTH)  # GOD MODE: min health = 1
             
             # Update shield status
             new_shield_active = jnp.where(collected_shields, 1, state.shield_active)
@@ -2171,7 +2213,7 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
             # Apply shield damage reduction (50% if shield active)
             shield_multiplier = jnp.where(new_shield_active == 1, 0.5, 1.0)
             reduced_damage = (contact_damage * shield_multiplier).astype(jnp.int32)
-            final_health = jnp.clip(new_health - reduced_damage, 0, self.consts.MAX_HEALTH)
+            final_health = jnp.clip(new_health - reduced_damage, 1, self.consts.MAX_HEALTH)  # GOD MODE: min health = 1
             
             # Enemy bullet damage to player only
             def enemy_bullet_hits_player(bpos):
@@ -2181,7 +2223,7 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
                 return overlap_x & overlap_y
             enemy_bullet_hits = jax.vmap(enemy_bullet_hits_player)(final_enemy_bullet_positions[:, :2]) & (final_enemy_bullet_active == 1)
             enemy_bullet_damage = jnp.sum(enemy_bullet_hits.astype(jnp.int32))
-            final_health = jnp.clip(final_health - enemy_bullet_damage, 0, self.consts.MAX_HEALTH)
+            final_health = jnp.clip(final_health - enemy_bullet_damage, 1, self.consts.MAX_HEALTH)  # GOD MODE: min health = 1
             final_enemy_bullet_active3 = final_enemy_bullet_active & (~enemy_bullet_hits).astype(jnp.int32)
             
             # Spawner logic: spawn enemies near active spawners

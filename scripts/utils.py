@@ -1,4 +1,5 @@
 import pygame
+import traceback
 import jax
 import numpy as np
 import importlib
@@ -52,6 +53,9 @@ def update_pygame(pygame_screen, raster, SCALING_FACTOR=3, WIDTH=400, HEIGHT=300
     pygame.display.flip()
 
 
+from typing import List
+
+
 def get_human_action() -> jax.numpy.ndarray: # Or chex.Array if you use chex
     """
     Get human action from keyboard with support for diagonal movement and combined fire,
@@ -59,10 +63,16 @@ def get_human_action() -> jax.numpy.ndarray: # Or chex.Array if you use chex
     Returns a JAX array containing a single integer action.
     """
     # Important: Process Pygame events to allow window to close, etc.
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            raise SystemExit("Pygame window closed by user.")
+    # Use pygame.event.pump() and key state to avoid constructing Event objects
+    try:
+        pygame.event.pump()
+    except Exception as e:
+        print("get_human_action: pygame.event.pump() failed:", e)
+        traceback.print_exc()
+
+    # We avoid calling pygame.event.get() here to reduce exposure to C-level event parsing bugs.
+    # If the user closed the window, pygame.key.get_pressed() may still be valid; for a robust
+    # quit detection the main loop should inspect events using a guarded helper.
         # You could handle other events here if needed (e.g., KEYDOWN for one-shot actions)
 
     keys = pygame.key.get_pressed()

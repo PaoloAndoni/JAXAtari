@@ -35,6 +35,25 @@ import ale_py  # Required for gym[atari]
 import jax
 import jax.random as jrandom
 import jax.numpy as jnp
+import utils
+# Import safe_get_events from utils but fall back to a local helper if that fails
+try:
+    safe_get_events = utils.safe_get_events
+except Exception as e:
+    print("Warning: could not import utils.safe_get_events:", e)
+    def safe_get_events():
+        try:
+            pygame.event.pump()
+        except Exception:
+            pass
+        try:
+            return list(pygame.event.get([pygame.QUIT, pygame.KEYDOWN]))
+        except Exception:
+            try:
+                return list(pygame.event.get())
+            except Exception:
+                print("safe_get_events fallback: get() failed; continuing without events.")
+                return []
 
 try:
     import jaxatari.core as core 
@@ -306,27 +325,32 @@ def run_parallel_mode(
 
     while running:
         # --- Handle Input ---
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT or \
-               (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-                running = False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_p:
-                    pause = not pause
-                    print(f"Paused: {pause}")
-                elif event.key == pygame.K_f:
-                    frame_by_frame = not frame_by_frame
-                    pause = False  # Toggling f-b-f unpauses
-                    print(f"Frame-by-frame: {frame_by_frame}")
-                elif event.key == pygame.K_n:
-                    next_frame_asked = True
-                elif event.key == pygame.K_r:
-                    print("Resetting environments by user request...")
-                    ale_obs, ale_info = ale_env.reset(seed=seed)
-                    jax_obs, jax_state = jax_data["env"].reset(jrandom.PRNGKey(seed))
-                    # Get frames after reset
-                    jax_frame = np.array(jitted_render(jax_state))
-                    ale_frame = ale_env.render()
+        events = safe_get_events()
+        for event in events:
+            try:
+                if event.type == pygame.QUIT or \
+                   (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_p:
+                        pause = not pause
+                        print(f"Paused: {pause}")
+                    elif event.key == pygame.K_f:
+                        frame_by_frame = not frame_by_frame
+                        pause = False  # Toggling f-b-f unpauses
+                        print(f"Frame-by-frame: {frame_by_frame}")
+                    elif event.key == pygame.K_n:
+                        next_frame_asked = True
+                    elif event.key == pygame.K_r:
+                        print("Resetting environments by user request...")
+                        ale_obs, ale_info = ale_env.reset(seed=seed)
+                        jax_obs, jax_state = jax_data["env"].reset(jrandom.PRNGKey(seed))
+                        # Get frames after reset
+                        jax_frame = np.array(jitted_render(jax_state))
+                        ale_frame = ale_env.render()
+            except Exception as e:
+                print("Exception while handling event:", repr(event), type(e), e)
+                continue
 
         # --- Pause/Frame-by-Frame Logic ---
         if pause or (frame_by_frame and not next_frame_asked):
@@ -417,25 +441,30 @@ def run_record_replay_mode(
     
     while recording:
         # --- Handle Input ---
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT or \
-               (event.type == pygame.KEYDOWN and (event.key == pygame.K_ESCAPE or event.key == pygame.K_q)):
-                recording = False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_p:
-                    pause = not pause
-                    print(f"Paused: {pause}")
-                elif event.key == pygame.K_f:
-                    frame_by_frame = not frame_by_frame
-                    pause = False
-                    print(f"Frame-by-frame: {frame_by_frame}")
-                elif event.key == pygame.K_n:
-                    next_frame_asked = True
-                elif event.key == pygame.K_r:
-                    print("Resetting JAX environment (clearing actions)...")
-                    jax_obs, jax_state = jax_data["env"].reset(jrandom.PRNGKey(seed))
-                    jax_frame = np.array(jitted_render(jax_state))
-                    recorded_actions = []
+        events = safe_get_events()
+        for event in events:
+            try:
+                if event.type == pygame.QUIT or \
+                   (event.type == pygame.KEYDOWN and (event.key == pygame.K_ESCAPE or event.key == pygame.K_q)):
+                    recording = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_p:
+                        pause = not pause
+                        print(f"Paused: {pause}")
+                    elif event.key == pygame.K_f:
+                        frame_by_frame = not frame_by_frame
+                        pause = False
+                        print(f"Frame-by-frame: {frame_by_frame}")
+                    elif event.key == pygame.K_n:
+                        next_frame_asked = True
+                    elif event.key == pygame.K_r:
+                        print("Resetting JAX environment (clearing actions)...")
+                        jax_obs, jax_state = jax_data["env"].reset(jrandom.PRNGKey(seed))
+                        jax_frame = np.array(jitted_render(jax_state))
+                        recorded_actions = []
+            except Exception as e:
+                print("Exception while handling event:", repr(event), type(e), e)
+                continue
         
         # --- Pause/Frame-by-Frame Logic ---
         if pause or (frame_by_frame and not next_frame_asked):
@@ -505,29 +534,34 @@ def run_record_replay_mode(
      
     while replay_idx < len(recorded_actions):
         # Check for quit event during replay
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT or \
-               (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-                print("Replay cancelled.")
-                return
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_p:
-                    pause = not pause
-                    print(f"Paused: {pause}")
-                elif event.key == pygame.K_f:
-                    frame_by_frame = not frame_by_frame
-                    pause = False
-                    print(f"Frame-by-frame: {frame_by_frame}")
-                elif event.key == pygame.K_n:
-                    next_frame_asked = True
-                elif event.key == pygame.K_r:
-                    print("Restarting replay from beginning...")
-                    ale_obs, jax_state, jax_frame, ale_frame = reset_for_replay()
-                    replay_idx = 0
-                    pause = False
-                    frame_by_frame = False
-                    next_frame_asked = False
-                    continue
+        events = safe_get_events()
+        for event in events:
+            try:
+                if event.type == pygame.QUIT or \
+                   (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                    print("Replay cancelled.")
+                    return
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_p:
+                        pause = not pause
+                        print(f"Paused: {pause}")
+                    elif event.key == pygame.K_f:
+                        frame_by_frame = not frame_by_frame
+                        pause = False
+                        print(f"Frame-by-frame: {frame_by_frame}")
+                    elif event.key == pygame.K_n:
+                        next_frame_asked = True
+                    elif event.key == pygame.K_r:
+                        print("Restarting replay from beginning...")
+                        ale_obs, jax_state, jax_frame, ale_frame = reset_for_replay()
+                        replay_idx = 0
+                        pause = False
+                        frame_by_frame = False
+                        next_frame_asked = False
+                        continue
+            except Exception as e:
+                print("Exception while handling event:", repr(event), type(e), e)
+                continue
  
         # --- Pause/Frame-by-Frame Logic ---
         if pause or (frame_by_frame and not next_frame_asked):
