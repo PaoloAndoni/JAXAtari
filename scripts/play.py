@@ -20,6 +20,24 @@ ACTION_NAMES = {
 }
 
 
+def safe_pygame_events() -> list[pygame.event.Event]:
+    """Return pending pygame events with a fallback for intermittent event.get backend failures."""
+    try:
+        return pygame.event.get()
+    except SystemError as exc:
+        if not isinstance(exc.__cause__, KeyError):
+            raise
+        # Fallback: poll events one-by-one until queue is empty.
+        # This avoids the bulk-get code path that occasionally fails on some setups.
+        events: list[pygame.event.Event] = []
+        while True:
+            event = pygame.event.poll()
+            if event.type == pygame.NOEVENT:
+                break
+            events.append(event)
+        return events
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Play a JAXAtari game, record your actions or replay them."
@@ -220,7 +238,7 @@ def main():
                 clock.tick(frame_rate)
 
                 # Check for quit event
-                for event in pygame.event.get():
+                for event in safe_pygame_events():
                     if event.type == pygame.QUIT or (
                         event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
                     ):
@@ -241,7 +259,7 @@ def main():
     while running:
         # check for external actions
         if not execute_without_rendering:
-            for event in pygame.event.get():
+            for event in safe_pygame_events():
                 if event.type == pygame.QUIT:
                     running = False
                     continue

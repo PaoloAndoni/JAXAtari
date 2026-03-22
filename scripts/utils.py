@@ -60,12 +60,8 @@ def get_human_action() -> jax.numpy.ndarray: # Or chex.Array if you use chex
     using Action constants.
     Returns a JAX array containing a single integer action.
     """
-    # Important: Process Pygame events to allow window to close, etc.
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            raise SystemExit("Pygame window closed by user.")
-        # You could handle other events here if needed (e.g., KEYDOWN for one-shot actions)
+    # Keep the input subsystem updated; main loops handle event draining and quit logic.
+    pygame.event.pump()
 
     keys = pygame.key.get_pressed()
 

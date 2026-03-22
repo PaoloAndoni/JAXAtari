@@ -875,34 +875,50 @@ class DarkChambersRenderer(JAXGameRenderer):
         # Walls in world coordinates - format: [x, y, width, height]
         # Multiple levels with different layouts
         # Shape: (MAX_LEVELS, max_walls_per_level, 4)
-        # Define 3 portal holes per side (top, middle, bottom)
-        portal_hole_height = 40
-        portal_gap = (self.consts.WORLD_HEIGHT - 3 * portal_hole_height) // 4
+
+        # ---------- Layout anchors ----------
+        T = self.consts.WALL_THICKNESS
+        top_room_bottom_y  = 160   # bottom of upper side chambers (inner shelf y)
+        middle_bar_top_y   = 300   # top of flipped-T crossbar
+        middle_bar_h       = 12    # thickness of flipped-T crossbar
+        middle_bar_bottom_y = middle_bar_top_y + middle_bar_h   # 312
+        bottom_posts_top_y = 360   # where the bottom long verticals start
+        side_portal_margin = 18    # gap between a landmark and the portal edge
+
+        portal_hole_height = 32    # height of each side portal opening
+
+        # 4 landmark-anchored portals per side (symmetric left/right):
+        # 1) TOP portal y=30-62  — inaccessible from center (blocked by inner chambers)
+        # 2) y=178-210           — just below upper chamber shelf
+        # 3) y=330-362           — just below flipped-T crossbar
+        # 4) y=378-410           — just below bottom posts
+        top_portal_y = 30   # top of the inaccessible top portal
         portal_y_starts = [
-            portal_gap,
-            portal_gap * 2 + portal_hole_height,
-            portal_gap * 3 + portal_hole_height * 2
+            top_portal_y,                                      #  30
+            top_room_bottom_y  + side_portal_margin,          # 178
+            middle_bar_bottom_y + side_portal_margin,         # 330
+            bottom_posts_top_y  + side_portal_margin,         # 378
         ]
         portal_y_ends = [y + portal_hole_height for y in portal_y_starts]
-        
+
         # Middle map (map_index=0) - original layout, adjusted for new portals and height
         # Borders
-        border_top = [0, 0, self.consts.WORLD_WIDTH, self.consts.WALL_THICKNESS]
-        border_bottom = [0, self.consts.WORLD_HEIGHT - self.consts.WALL_THICKNESS, self.consts.WORLD_WIDTH, self.consts.WALL_THICKNESS]
+        border_top = [0, 0, self.consts.WORLD_WIDTH, T]
+        border_bottom = [0, self.consts.WORLD_HEIGHT - T, self.consts.WORLD_WIDTH, T]
         # Left wall - 3 gaps for portals
         left_walls = []
         prev_end = 0
         for y_start, y_end in zip(portal_y_starts, portal_y_ends):
-            left_walls.append([0, prev_end, self.consts.WALL_THICKNESS, y_start - prev_end])
+            left_walls.append([0, prev_end, T, y_start - prev_end])
             prev_end = y_end
-        left_walls.append([0, prev_end, self.consts.WALL_THICKNESS, self.consts.WORLD_HEIGHT - prev_end])
+        left_walls.append([0, prev_end, T, self.consts.WORLD_HEIGHT - prev_end])
         # Right wall - 3 gaps for portals
         right_walls = []
         prev_end = 0
         for y_start, y_end in zip(portal_y_starts, portal_y_ends):
-            right_walls.append([self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, prev_end, self.consts.WALL_THICKNESS, y_start - prev_end])
+            right_walls.append([self.consts.WORLD_WIDTH - T, prev_end, T, y_start - prev_end])
             prev_end = y_end
-        right_walls.append([self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, prev_end, self.consts.WALL_THICKNESS, self.consts.WORLD_HEIGHT - prev_end])
+        right_walls.append([self.consts.WORLD_WIDTH - T, prev_end, T, self.consts.WORLD_HEIGHT - prev_end])
         
         
         #Coordinate System
@@ -934,13 +950,13 @@ class DarkChambersRenderer(JAXGameRenderer):
             
             # ───────── MIDDLE DIVIDER (FLIPPED T) ─────────
             # Vertical wall down the middle
-            [77, 0, 6, 300],
+            [77, 0, 8, 260],
             # Single centered horizontal bar; leaves walkable gaps on both sides
-            [40, 300, 80, 6],
+            [31, 260, 100, 12],
 
             # ───────── BOTTOM LONG VERTICALS (SYMMETRIC) ─────────
-            [48, 360, 6, 234],
-            [106, 360, 6, 234]
+            [48, 420, 6, 174],
+            [106, 420, 6, 174]
         ]
 
         # Secondary maze set (v2) - starts as a copy and can be edited independently later.
@@ -1115,11 +1131,13 @@ class DarkChambersRenderer(JAXGameRenderer):
             [0, 0, self.consts.WALL_THICKNESS, portal_y_starts[0]],
             [0, portal_y_ends[0], self.consts.WALL_THICKNESS, portal_y_starts[1] - portal_y_ends[0]],
             [0, portal_y_ends[1], self.consts.WALL_THICKNESS, portal_y_starts[2] - portal_y_ends[1]],
-            [0, portal_y_ends[2], self.consts.WALL_THICKNESS, self.consts.WORLD_HEIGHT - portal_y_ends[2]],
+            [0, portal_y_ends[2], self.consts.WALL_THICKNESS, portal_y_starts[3] - portal_y_ends[2]],
+            [0, portal_y_ends[3], self.consts.WALL_THICKNESS, self.consts.WORLD_HEIGHT - portal_y_ends[3]],
             [self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, 0, self.consts.WALL_THICKNESS, portal_y_starts[0]],
             [self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, portal_y_ends[0], self.consts.WALL_THICKNESS, portal_y_starts[1] - portal_y_ends[0]],
             [self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, portal_y_ends[1], self.consts.WALL_THICKNESS, portal_y_starts[2] - portal_y_ends[1]],
-            [self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, portal_y_ends[2], self.consts.WALL_THICKNESS, self.consts.WORLD_HEIGHT - portal_y_ends[2]],
+            [self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, portal_y_ends[2], self.consts.WALL_THICKNESS, portal_y_starts[3] - portal_y_ends[2]],
+            [self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, portal_y_ends[3], self.consts.WALL_THICKNESS, self.consts.WORLD_HEIGHT - portal_y_ends[3]],
         ], dtype=jnp.int32)
 
         def rect_overlaps_any(rect, walls):
@@ -1408,26 +1426,32 @@ class DarkChambersRenderer(JAXGameRenderer):
         self.WALLS = middle_level_0_walls
 
         def build_boundary_walls():
-            portal_hole_height = 40
-            portal_gap = (self.consts.WORLD_HEIGHT - 3 * portal_hole_height) // 4
-            portal_y_starts = jnp.array([
-                portal_gap,
-                portal_gap * 2 + portal_hole_height,
-                portal_gap * 3 + portal_hole_height * 2
-            ], dtype=jnp.int32)
-            portal_y_ends = portal_y_starts + portal_hole_height
+            # 4 portals per side matching the layout anchors defined above
+            # portal 0: y=30-62   (top, blocked from center by inner chambers)
+            # portal 1: y=178-210 (just below upper chamber shelf)
+            # portal 2: y=330-362 (below flipped-T crossbar)
+            # portal 3: y=378-410 (below bottom posts)
+            T = self.consts.WALL_THICKNESS
+            W = self.consts.WORLD_WIDTH
+            H = self.consts.WORLD_HEIGHT
+            ps = [30, 178, 330, 378]   # portal y starts
+            pe = [62, 210, 362, 410]   # portal y ends
 
-            bt = jnp.array([0, 0, self.consts.WORLD_WIDTH, self.consts.WALL_THICKNESS], dtype=jnp.int32)
-            bb = jnp.array([0, self.consts.WORLD_HEIGHT - self.consts.WALL_THICKNESS, self.consts.WORLD_WIDTH, self.consts.WALL_THICKNESS], dtype=jnp.int32)
-            lw1 = jnp.array([0, 0, self.consts.WALL_THICKNESS, portal_y_starts[0]], dtype=jnp.int32)
-            lw2 = jnp.array([0, portal_y_ends[0], self.consts.WALL_THICKNESS, portal_y_starts[1] - portal_y_ends[0]], dtype=jnp.int32)
-            lw3 = jnp.array([0, portal_y_ends[1], self.consts.WALL_THICKNESS, portal_y_starts[2] - portal_y_ends[1]], dtype=jnp.int32)
-            lw4 = jnp.array([0, portal_y_ends[2], self.consts.WALL_THICKNESS, self.consts.WORLD_HEIGHT - portal_y_ends[2]], dtype=jnp.int32)
-            rw1 = jnp.array([self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, 0, self.consts.WALL_THICKNESS, portal_y_starts[0]], dtype=jnp.int32)
-            rw2 = jnp.array([self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, portal_y_ends[0], self.consts.WALL_THICKNESS, portal_y_starts[1] - portal_y_ends[0]], dtype=jnp.int32)
-            rw3 = jnp.array([self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, portal_y_ends[1], self.consts.WALL_THICKNESS, portal_y_starts[2] - portal_y_ends[1]], dtype=jnp.int32)
-            rw4 = jnp.array([self.consts.WORLD_WIDTH - self.consts.WALL_THICKNESS, portal_y_ends[2], self.consts.WALL_THICKNESS, self.consts.WORLD_HEIGHT - portal_y_ends[2]], dtype=jnp.int32)
-            return jnp.stack([bt, bb, lw1, lw2, lw3, lw4, rw1, rw2, rw3, rw4], axis=0)
+            bt  = jnp.array([0, 0, W, T], dtype=jnp.int32)
+            bb  = jnp.array([0, H - T, W, T], dtype=jnp.int32)
+            # Left wall — 5 segments around 4 gaps
+            lw1 = jnp.array([0,   0,     T, ps[0]],           dtype=jnp.int32)
+            lw2 = jnp.array([0,   pe[0], T, ps[1] - pe[0]],   dtype=jnp.int32)
+            lw3 = jnp.array([0,   pe[1], T, ps[2] - pe[1]],   dtype=jnp.int32)
+            lw4 = jnp.array([0,   pe[2], T, ps[3] - pe[2]],   dtype=jnp.int32)
+            lw5 = jnp.array([0,   pe[3], T, H - pe[3]],       dtype=jnp.int32)
+            # Right wall — 5 segments around 4 gaps
+            rw1 = jnp.array([W-T, 0,     T, ps[0]],           dtype=jnp.int32)
+            rw2 = jnp.array([W-T, pe[0], T, ps[1] - pe[0]],   dtype=jnp.int32)
+            rw3 = jnp.array([W-T, pe[1], T, ps[2] - pe[1]],   dtype=jnp.int32)
+            rw4 = jnp.array([W-T, pe[2], T, ps[3] - pe[2]],   dtype=jnp.int32)
+            rw5 = jnp.array([W-T, pe[3], T, H - pe[3]],       dtype=jnp.int32)
+            return jnp.stack([bt, bb, lw1, lw2, lw3, lw4, lw5, rw1, rw2, rw3, rw4, rw5], axis=0)
 
         # Shared boundary walls (with portal gaps) for rendering and collision
         self.BOUNDARY_WALLS = build_boundary_walls()
@@ -2917,19 +2941,16 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
             prop_x = jnp.clip(prop_x, 0, self.consts.WORLD_WIDTH - self.consts.PLAYER_WIDTH)
             prop_y = jnp.clip(prop_y, 0, self.consts.WORLD_HEIGHT - self.consts.PLAYER_HEIGHT)
             
-            # Check if player is in ANY portal zone (top, middle, bottom)
-            portal_hole_height = 40
-            portal_gap = (self.consts.WORLD_HEIGHT - 3 * portal_hole_height) // 4
-            portal_y_starts = [
-                portal_gap,
-                portal_gap * 2 + portal_hole_height,
-                portal_gap * 3 + portal_hole_height * 2
-            ]
-            portal_y_ends = [y + portal_hole_height for y in portal_y_starts]
-            # Player is in portal zone if in any of the three
+            # Use the same side-portal Y ranges as wall construction.
+            # Top portal (30-62) exists visually but is intentionally non-traversable from center.
+            portal_y_starts = [178, 330, 378]
+            portal_y_ends = [210, 362, 410]
             in_portal_zone = False
             for y_start, y_end in zip(portal_y_starts, portal_y_ends):
-                in_portal_zone = in_portal_zone | ((prop_y >= y_start - self.consts.PLAYER_HEIGHT) & (prop_y <= y_end))
+                in_portal_zone = in_portal_zone | (
+                    (prop_y >= y_start - self.consts.PLAYER_HEIGHT)
+                    & (prop_y <= y_end)
+                )
             
             # Cycle through maps: exit left → go left map, exit right → go right map
             # Middle(0) → Left(1) → Middle(0) → Right(2) → Middle(0)
@@ -2997,10 +3018,12 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
                     ),
                 )
 
-                portal_hole_height = 40
-                portal_y_start = (self.consts.WORLD_HEIGHT - portal_hole_height) // 2
-                portal_y_end = portal_y_start + portal_hole_height
-                in_portal_zone = (clipped[1] >= portal_y_start - self.consts.ENEMY_HEIGHT) & (clipped[1] <= portal_y_end)
+                portal_y_starts = jnp.array([178, 330, 378], dtype=jnp.int32)
+                portal_y_ends = jnp.array([210, 362, 410], dtype=jnp.int32)
+                in_portal_zone = jnp.any(
+                    (clipped[1] >= (portal_y_starts - self.consts.ENEMY_HEIGHT))
+                    & (clipped[1] <= portal_y_ends)
+                )
 
                 should_wrap_right = in_portal_zone & (clipped[0] <= 0)
                 should_wrap_left  = in_portal_zone & (clipped[0] >= self.consts.WORLD_WIDTH - self.consts.ENEMY_WIDTH)
@@ -3014,14 +3037,12 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
 
             def apply_enemy_portal_keepout(pos):
                 """Clamp enemies away from portal entrances so they do not block traversal."""
-                portal_hole_height = 40
-                portal_gap = (self.consts.WORLD_HEIGHT - 3 * portal_hole_height) // 4
                 portal_y_starts = jnp.array([
-                    portal_gap,
-                    portal_gap * 2 + portal_hole_height,
-                    portal_gap * 3 + portal_hole_height * 2,
+                    178,
+                    330,
+                    378,
                 ], dtype=jnp.int32)
-                portal_y_ends = portal_y_starts + portal_hole_height
+                portal_y_ends = jnp.array([210, 362, 410], dtype=jnp.int32)
 
                 in_portal_lane = jnp.any(
                     (pos[1] >= (portal_y_starts - self.consts.ENEMY_HEIGHT))
@@ -3648,10 +3669,11 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
             collected_hammers = jnp.sum(item_collisions & (state.item_types == ITEM_HAMMER))
             collected_keys = jnp.any(item_collisions & (state.item_types == ITEM_KEY))
             # Health change mapping: heart +HEALTH_GAIN, poison -POISON_DAMAGE, trap -TRAP_DAMAGE
+            # GOD MODE: ignore all damage sources, only allow healing
             health_change = (
                 collected_hearts * self.consts.HEALTH_GAIN
-                - collected_poison * self.consts.POISON_DAMAGE
-                - collected_traps * self.consts.TRAP_DAMAGE
+                - 0  # collected_poison * self.consts.POISON_DAMAGE
+                - 0  # collected_traps * self.consts.TRAP_DAMAGE
             )
             new_health = jnp.clip(state.health + health_change, 0, self.consts.MAX_HEALTH)
             
@@ -4102,7 +4124,8 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
 
             final_damage = jnp.maximum(applied_damage, applied_bullet_damage)
 
-            final_health = jnp.clip(new_health - final_damage, 0, self.consts.MAX_HEALTH)
+            # GOD MODE: never subtract damage
+            final_health = new_health  # jnp.clip(new_health - final_damage, 0, self.consts.MAX_HEALTH)
 
             cooldown2 = jnp.where(
                 final_damage > 0,
