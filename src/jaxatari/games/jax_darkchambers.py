@@ -317,7 +317,7 @@ class DarkChambersConstants(NamedTuple):
     ENEMY_WIDTH: int = 10
     ENEMY_HEIGHT: int = 28
     
-    PLAYER_SPEED: int = 1
+    PLAYER_SPEED: int = 4  # temporary turbo speed for quick testing
     WALL_THICKNESS: int = 8
     
     PLAYER_START_X: int = 130  # Safe default spawn (avoids center shaft in custom mazes)
@@ -886,18 +886,20 @@ class DarkChambersRenderer(JAXGameRenderer):
         side_portal_margin = 18    # gap between a landmark and the portal edge
 
         portal_hole_height = 32    # height of each side portal opening
+        portal_row_spacing = 130   # slightly longer equal LU-LM and LM-LD spacing
 
         # 4 landmark-anchored portals per side (symmetric left/right):
         # 1) TOP portal y=30-62  — inaccessible from center (blocked by inner chambers)
-        # 2) y=178-210           — just below upper chamber shelf
-        # 3) y=330-362           — just below flipped-T crossbar
-        # 4) y=378-410           — just below bottom posts
+        # 2) LU/RU (reachable)   — slightly above flipped-T lower edge
+        # 3) LM/RM (reachable)   — equally spaced below LU/RU
+        # 4) LD/RD (reachable)   — equally spaced below LM/RM
         top_portal_y = 30   # top of the inaccessible top portal
+        accessible_portal_top_y = middle_bar_bottom_y - 72  # move LU/RU a little higher
         portal_y_starts = [
             top_portal_y,                                      #  30
-            top_room_bottom_y  + side_portal_margin,          # 178
-            middle_bar_bottom_y + side_portal_margin,         # 330
-            bottom_posts_top_y  + side_portal_margin,         # 378
+            accessible_portal_top_y,                           # 240 (LU/RU)
+            accessible_portal_top_y + portal_row_spacing,      # 370 (LM/RM)
+            accessible_portal_top_y + 2 * portal_row_spacing,  # 500 (LD/RD)
         ]
         portal_y_ends = [y + portal_hole_height for y in portal_y_starts]
 
@@ -984,51 +986,31 @@ class DarkChambersRenderer(JAXGameRenderer):
         middle_level_0_walls = jnp.array(maze, dtype=jnp.int32)
         middle_level_1_walls = jnp.array(maze_2, dtype=jnp.int32)
 
-        right_maze = [
-
-            # top and bottom caps
-            [0, 0, 160, 6],
-            [0, 594, 160, 6],
-
-            # upper split ledge (open center lane)
-            [0, 208, 56, 6],
-            [104, 208, 56, 6],
-
-            # middle-right portal enclosure (above/below portal opening, no direct block)
-            [110, 274, 50, 6],
-            [110, 320, 50, 6],
-
-            # bottom-right portal enclosure (above/below portal opening, no direct block)
-            [110, 434, 50, 6],
-            [110, 480, 50, 6],
-
-            # lower-third full-width bar (placed above bottom portal opening)
-            [0, 420, 160, 6],
-
-            # lower split ledge
-            [0, 520, 46, 6],
-            [114, 520, 46, 6]
+        # Upper side map (map_index=1): entered from LU/RU portals.
+        # Layout intent: two upper chambers split by a center column, with a lower border.
+        # LU entry (from middle-left portal) lands on right side and can move upward.
+        # RU entry (from middle-right portal) lands on left side with blocked top progression.
+        upper_maze = [
+            # Upper-only section: top to divider at y=300, split by center column
+            [0, 0, 77, 6],                     # Top border left side (covers left chamber fully)
+            [100, 0, 60, 6],                   # Top border right side (gap at x=85-100 for upward exit)
+            [77, 0, 8, 300],                   # Center column (upper section only, y=0-300)
+            [0, 300, 160, 6],                  # Horizontal divider: upper section ends, lower begins
+            [0, 594, 160, 6],                  # Bottom border
         ]
 
-        # Secondary right maze set (v2) - copy of v1 for now.
-        right_maze_2 = [
-            #chamber enclosing (mirror symmetric to left)
-            [106, 0, 6, 162],
-            
-            [106, 160, 54, 6],
-
-            # long vertical maze pillars (v2)
-            [30, 200, 6, 394],
-            [58, 170, 6, 424],
-            [82, 220, 6, 374],
-            [110, 190, 6, 404]
-
-
-
+        # Secondary upper maze set (v2) - same simple structure.
+        upper_maze_2 = [
+            [0, 0, 77, 6],                     # Top border left side (covers left chamber fully)
+            [100, 0, 60, 6],                   # Top border right side (gap at x=85-100 for upward exit)
+            [77, 0, 8, 300],                   # Center column (upper section only, y=0-300)
+            [0, 300, 160, 6],                  # Horizontal divider: upper section ends, lower begins
+            [0, 594, 160, 6],                  # Bottom border
         ]
 
 
-        left_maze = [
+        # Lower side map (map_index=2): entered from LM/LD/RM/RD portals.
+        lower_maze = [
 
             # top and bottom caps
             [0, 0, 160, 6],
@@ -1055,8 +1037,8 @@ class DarkChambersRenderer(JAXGameRenderer):
             [114, 520, 46, 6]
         ]
 
-        # Secondary left maze set (v2) - copy of v1 for now.
-        left_maze_2 = [
+        # Secondary lower maze set (v2) - copy of v1 for now.
+        lower_maze_2 = [
             #chamber enclosing
             [48, 0, 6, 162],
 
@@ -1072,12 +1054,13 @@ class DarkChambersRenderer(JAXGameRenderer):
 
         ]
 
-        left_level_0_walls = jnp.array(left_maze, dtype=jnp.int32)
-        left_level_1_walls = jnp.array(left_maze_2, dtype=jnp.int32)
-        
-        # Right map (map_index=2) - horizontal chambers, adjusted for portals/height
-        right_level_0_walls = jnp.array(right_maze, dtype=jnp.int32)
-        right_level_1_walls = jnp.array(right_maze_2, dtype=jnp.int32)
+        # Upper map (map_index=1)
+        upper_level_0_walls = jnp.array(upper_maze, dtype=jnp.int32)
+        upper_level_1_walls = jnp.array(upper_maze_2, dtype=jnp.int32)
+
+        # Lower map (map_index=2)
+        lower_level_0_walls = jnp.array(lower_maze, dtype=jnp.int32)
+        lower_level_1_walls = jnp.array(lower_maze_2, dtype=jnp.int32)
 
 
 
@@ -1092,7 +1075,7 @@ class DarkChambersRenderer(JAXGameRenderer):
         #    [81, 540, 6, 60],
         #], dtype=jnp.int32)
         
-        # Left map level 1 uses v2 walls
+        # Upper map level 1 uses v2 walls
         
         #jnp.array([
         #    [60, 90, 110, 6],
@@ -1102,7 +1085,7 @@ class DarkChambersRenderer(JAXGameRenderer):
         #    [50, 440, 120, 6],
         #], dtype=jnp.int32)
         
-        # Right map level 1 uses v2 walls
+        # Lower map level 1 uses v2 walls
         
         #jnp.array([
         #    [80, 110, 120, 6],
@@ -1251,11 +1234,11 @@ class DarkChambersRenderer(JAXGameRenderer):
         middle_level_0_walls, level0_door_m, level0_reward_m, level0_entry_m, level0_valid_m = add_cage(middle_level_0_walls, cage_candidates)
         middle_level_1_walls, level1_door_m, level1_reward_m, level1_entry_m, level1_valid_m = add_cage(middle_level_1_walls, cage_candidates)
         
-        left_level_0_walls, level0_door_l, level0_reward_l, level0_entry_l, level0_valid_l = add_cage(left_level_0_walls, cage_candidates)
-        left_level_1_walls, level1_door_l, level1_reward_l, level1_entry_l, level1_valid_l = add_cage(left_level_1_walls, cage_candidates)
-        
-        right_level_0_walls, level0_door_r, level0_reward_r, level0_entry_r, level0_valid_r = add_cage(right_level_0_walls, cage_candidates)
-        right_level_1_walls, level1_door_r, level1_reward_r, level1_entry_r, level1_valid_r = add_cage(right_level_1_walls, cage_candidates)
+        upper_level_0_walls, level0_door_u, level0_reward_u, level0_entry_u, level0_valid_u = add_cage(upper_level_0_walls, cage_candidates)
+        upper_level_1_walls, level1_door_u, level1_reward_u, level1_entry_u, level1_valid_u = add_cage(upper_level_1_walls, cage_candidates)
+
+        lower_level_0_walls, level0_door_l, level0_reward_l, level0_entry_l, level0_valid_l = add_cage(lower_level_0_walls, cage_candidates)
+        lower_level_1_walls, level1_door_l, level1_reward_l, level1_entry_l, level1_valid_l = add_cage(lower_level_1_walls, cage_candidates)
 
         # Alternate wall sets by level parity: even=v1, odd=v2
         middle_level_2_walls = middle_level_0_walls
@@ -1264,17 +1247,17 @@ class DarkChambersRenderer(JAXGameRenderer):
         middle_level_5_walls = middle_level_1_walls
         middle_level_6_walls = middle_level_0_walls
         
-        left_level_2_walls = left_level_0_walls
-        left_level_3_walls = left_level_1_walls
-        left_level_4_walls = left_level_0_walls
-        left_level_5_walls = left_level_1_walls
-        left_level_6_walls = left_level_0_walls
-        
-        right_level_2_walls = right_level_0_walls
-        right_level_3_walls = right_level_1_walls
-        right_level_4_walls = right_level_0_walls
-        right_level_5_walls = right_level_1_walls
-        right_level_6_walls = right_level_0_walls
+        upper_level_2_walls = upper_level_0_walls
+        upper_level_3_walls = upper_level_1_walls
+        upper_level_4_walls = upper_level_0_walls
+        upper_level_5_walls = upper_level_1_walls
+        upper_level_6_walls = upper_level_0_walls
+
+        lower_level_2_walls = lower_level_0_walls
+        lower_level_3_walls = lower_level_1_walls
+        lower_level_4_walls = lower_level_0_walls
+        lower_level_5_walls = lower_level_1_walls
+        lower_level_6_walls = lower_level_0_walls
 
         # Cage positions for all levels (levels 2-6 identical to level 1)
         # MIDDLE MAP cage positions
@@ -1306,7 +1289,36 @@ class DarkChambersRenderer(JAXGameRenderer):
         level6_reward_pos_m = level0_reward_m
         level6_entry_pos_m = level0_entry_m
         
-        # LEFT MAP cage positions
+        # UPPER MAP cage positions
+        level0_door_pos_u = level0_door_u
+        level0_reward_pos_u = level0_reward_u
+        level0_entry_pos_u = level0_entry_u
+
+        level1_door_pos_u = level1_door_u
+        level1_reward_pos_u = level1_reward_u
+        level1_entry_pos_u = level1_entry_u
+
+        level2_door_pos_u = level0_door_u
+        level2_reward_pos_u = level0_reward_u
+        level2_entry_pos_u = level0_entry_u
+
+        level3_door_pos_u = level1_door_u
+        level3_reward_pos_u = level1_reward_u
+        level3_entry_pos_u = level1_entry_u
+
+        level4_door_pos_u = level0_door_u
+        level4_reward_pos_u = level0_reward_u
+        level4_entry_pos_u = level0_entry_u
+
+        level5_door_pos_u = level1_door_u
+        level5_reward_pos_u = level1_reward_u
+        level5_entry_pos_u = level1_entry_u
+
+        level6_door_pos_u = level0_door_u
+        level6_reward_pos_u = level0_reward_u
+        level6_entry_pos_u = level0_entry_u
+
+        # LOWER MAP cage positions
         level0_door_pos_l = level0_door_l
         level0_reward_pos_l = level0_reward_l
         level0_entry_pos_l = level0_entry_l
@@ -1334,79 +1346,50 @@ class DarkChambersRenderer(JAXGameRenderer):
         level6_door_pos_l = level0_door_l
         level6_reward_pos_l = level0_reward_l
         level6_entry_pos_l = level0_entry_l
-        
-        # RIGHT MAP cage positions
-        level0_door_pos_r = level0_door_r
-        level0_reward_pos_r = level0_reward_r
-        level0_entry_pos_r = level0_entry_r
-
-        level1_door_pos_r = level1_door_r
-        level1_reward_pos_r = level1_reward_r
-        level1_entry_pos_r = level1_entry_r
-
-        level2_door_pos_r = level0_door_r
-        level2_reward_pos_r = level0_reward_r
-        level2_entry_pos_r = level0_entry_r
-
-        level3_door_pos_r = level1_door_r
-        level3_reward_pos_r = level1_reward_r
-        level3_entry_pos_r = level1_entry_r
-
-        level4_door_pos_r = level0_door_r
-        level4_reward_pos_r = level0_reward_r
-        level4_entry_pos_r = level0_entry_r
-
-        level5_door_pos_r = level1_door_r
-        level5_reward_pos_r = level1_reward_r
-        level5_entry_pos_r = level1_entry_r
-
-        level6_door_pos_r = level0_door_r
-        level6_reward_pos_r = level0_reward_r
-        level6_entry_pos_r = level0_entry_r
 
         # Stack into 3D arrays: (3 maps, 7 levels, 2 coords)
         self.CAGE_DOOR_POSITIONS = jnp.stack([
             jnp.stack([level0_door_pos_m, level1_door_pos_m, level2_door_pos_m, level3_door_pos_m, level4_door_pos_m, level5_door_pos_m, level6_door_pos_m], axis=0),
+            jnp.stack([level0_door_pos_u, level1_door_pos_u, level2_door_pos_u, level3_door_pos_u, level4_door_pos_u, level5_door_pos_u, level6_door_pos_u], axis=0),
             jnp.stack([level0_door_pos_l, level1_door_pos_l, level2_door_pos_l, level3_door_pos_l, level4_door_pos_l, level5_door_pos_l, level6_door_pos_l], axis=0),
-            jnp.stack([level0_door_pos_r, level1_door_pos_r, level2_door_pos_r, level3_door_pos_r, level4_door_pos_r, level5_door_pos_r, level6_door_pos_r], axis=0),
         ], axis=0)
 
         self.CAGE_REWARD_POSITIONS = jnp.stack([
             jnp.stack([level0_reward_pos_m, level1_reward_pos_m, level2_reward_pos_m, level3_reward_pos_m, level4_reward_pos_m, level5_reward_pos_m, level6_reward_pos_m], axis=0),
+            jnp.stack([level0_reward_pos_u, level1_reward_pos_u, level2_reward_pos_u, level3_reward_pos_u, level4_reward_pos_u, level5_reward_pos_u, level6_reward_pos_u], axis=0),
             jnp.stack([level0_reward_pos_l, level1_reward_pos_l, level2_reward_pos_l, level3_reward_pos_l, level4_reward_pos_l, level5_reward_pos_l, level6_reward_pos_l], axis=0),
-            jnp.stack([level0_reward_pos_r, level1_reward_pos_r, level2_reward_pos_r, level3_reward_pos_r, level4_reward_pos_r, level5_reward_pos_r, level6_reward_pos_r], axis=0),
         ], axis=0)
 
         self.CAGE_ENTRY_POSITIONS = jnp.stack([
             jnp.stack([level0_entry_pos_m, level1_entry_pos_m, level2_entry_pos_m, level3_entry_pos_m, level4_entry_pos_m, level5_entry_pos_m, level6_entry_pos_m], axis=0),
+            jnp.stack([level0_entry_pos_u, level1_entry_pos_u, level2_entry_pos_u, level3_entry_pos_u, level4_entry_pos_u, level5_entry_pos_u, level6_entry_pos_u], axis=0),
             jnp.stack([level0_entry_pos_l, level1_entry_pos_l, level2_entry_pos_l, level3_entry_pos_l, level4_entry_pos_l, level5_entry_pos_l, level6_entry_pos_l], axis=0),
-            jnp.stack([level0_entry_pos_r, level1_entry_pos_r, level2_entry_pos_r, level3_entry_pos_r, level4_entry_pos_r, level5_entry_pos_r, level6_entry_pos_r], axis=0),
         ], axis=0)
 
         self.CAGE_VALID = jnp.stack([
             jnp.stack([level0_valid_m, level1_valid_m, level0_valid_m, level1_valid_m, level0_valid_m, level1_valid_m, level0_valid_m], axis=0),
+            jnp.stack([level0_valid_u, level1_valid_u, level0_valid_u, level1_valid_u, level0_valid_u, level1_valid_u, level0_valid_u], axis=0),
             jnp.stack([level0_valid_l, level1_valid_l, level0_valid_l, level1_valid_l, level0_valid_l, level1_valid_l, level0_valid_l], axis=0),
-            jnp.stack([level0_valid_r, level1_valid_r, level0_valid_r, level1_valid_r, level0_valid_r, level1_valid_r, level0_valid_r], axis=0),
         ], axis=0)
         
         # Stack levels into 3D array: shape (3 maps, MAX_LEVELS, num_walls, 4)
-        # Map index 0 = middle, 1 = left, 2 = right
+        # Map index 0 = middle, 1 = upper, 2 = lower
         # NOTE: levels/maps can have different wall counts while editing maps.
         # Pad to a shared row count before stacking to avoid shape mismatch errors.
         middle_levels = [
             middle_level_0_walls, middle_level_1_walls, middle_level_2_walls,
             middle_level_3_walls, middle_level_4_walls, middle_level_5_walls, middle_level_6_walls,
         ]
-        left_levels = [
-            left_level_0_walls, left_level_1_walls, left_level_2_walls,
-            left_level_3_walls, left_level_4_walls, left_level_5_walls, left_level_6_walls,
+        upper_levels = [
+            upper_level_0_walls, upper_level_1_walls, upper_level_2_walls,
+            upper_level_3_walls, upper_level_4_walls, upper_level_5_walls, upper_level_6_walls,
         ]
-        right_levels = [
-            right_level_0_walls, right_level_1_walls, right_level_2_walls,
-            right_level_3_walls, right_level_4_walls, right_level_5_walls, right_level_6_walls,
+        lower_levels = [
+            lower_level_0_walls, lower_level_1_walls, lower_level_2_walls,
+            lower_level_3_walls, lower_level_4_walls, lower_level_5_walls, lower_level_6_walls,
         ]
 
-        all_levels = middle_levels + left_levels + right_levels
+        all_levels = middle_levels + upper_levels + lower_levels
         max_walls = max(int(w.shape[0]) for w in all_levels)
 
         def _pad_walls(walls: jnp.ndarray) -> jnp.ndarray:
@@ -1417,10 +1400,10 @@ class DarkChambersRenderer(JAXGameRenderer):
             return jnp.concatenate([walls, pad], axis=0)
 
         middle_walls_stack = jnp.stack([_pad_walls(w) for w in middle_levels], axis=0)
-        left_walls_stack = jnp.stack([_pad_walls(w) for w in left_levels], axis=0)
-        right_walls_stack = jnp.stack([_pad_walls(w) for w in right_levels], axis=0)
+        upper_walls_stack = jnp.stack([_pad_walls(w) for w in upper_levels], axis=0)
+        lower_walls_stack = jnp.stack([_pad_walls(w) for w in lower_levels], axis=0)
         
-        self.LEVEL_WALLS = jnp.stack([middle_walls_stack, left_walls_stack, right_walls_stack], axis=0)
+        self.LEVEL_WALLS = jnp.stack([middle_walls_stack, upper_walls_stack, lower_walls_stack], axis=0)
         
         # Default to middle map level 0 for compatibility
         self.WALLS = middle_level_0_walls
@@ -1428,14 +1411,14 @@ class DarkChambersRenderer(JAXGameRenderer):
         def build_boundary_walls():
             # 4 portals per side matching the layout anchors defined above
             # portal 0: y=30-62   (top, blocked from center by inner chambers)
-            # portal 1: y=178-210 (just below upper chamber shelf)
-            # portal 2: y=330-362 (below flipped-T crossbar)
-            # portal 3: y=378-410 (below bottom posts)
+            # portal 1: y=240-272 (LU/RU)
+            # portal 2: y=370-402 (LM/RM)
+            # portal 3: y=500-532 (LD/RD)
             T = self.consts.WALL_THICKNESS
             W = self.consts.WORLD_WIDTH
             H = self.consts.WORLD_HEIGHT
-            ps = [30, 178, 330, 378]   # portal y starts
-            pe = [62, 210, 362, 410]   # portal y ends
+            ps = [30, 240, 370, 500]   # portal y starts
+            pe = [62, 272, 402, 532]   # portal y ends
 
             bt  = jnp.array([0, 0, W, T], dtype=jnp.int32)
             bb  = jnp.array([0, H - T, W, T], dtype=jnp.int32)
@@ -2929,7 +2912,7 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
             dy_raw = dy
 
             # --- SLOW DOWN PLAYER MOVEMENT ---
-            PLAYER_MOVE_EVERY = 2  # 1=normal, 2=half speed, 3=1/3 speed, etc.
+            PLAYER_MOVE_EVERY = 1  # temporary turbo: no per-tick movement throttling
             player_move_tick = (state.step_counter % PLAYER_MOVE_EVERY) == 0
 
             dx = jnp.where(player_move_tick, dx, 0)
@@ -2937,51 +2920,65 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
 
             prop_x = state.player_x + dx
             prop_y = state.player_y + dy
+            # Keep pre-clip Y for top-gap transitions; clipping to 0 would hide upward exits.
+            prop_y_unclipped = prop_y
             
             prop_x = jnp.clip(prop_x, 0, self.consts.WORLD_WIDTH - self.consts.PLAYER_WIDTH)
             prop_y = jnp.clip(prop_y, 0, self.consts.WORLD_HEIGHT - self.consts.PLAYER_HEIGHT)
             
             # Use the same side-portal Y ranges as wall construction.
             # Top portal (30-62) exists visually but is intentionally non-traversable from center.
-            portal_y_starts = [178, 330, 378]
-            portal_y_ends = [210, 362, 410]
-            in_portal_zone = False
-            for y_start, y_end in zip(portal_y_starts, portal_y_ends):
-                in_portal_zone = in_portal_zone | (
-                    (prop_y >= y_start - self.consts.PLAYER_HEIGHT)
-                    & (prop_y <= y_end)
-                )
+            portal_y_starts = [240, 370, 500]
+            # End values here are exclusive in wall construction, so use end-1 for traversal checks.
+            portal_y_ends = [271, 401, 531]
+            in_upper_portal_zone = (
+                (prop_y >= portal_y_starts[0] - self.consts.PLAYER_HEIGHT)
+                & (prop_y <= portal_y_ends[0])
+            )
+            in_lower_portal_zone = (
+                ((prop_y >= portal_y_starts[1] - self.consts.PLAYER_HEIGHT) & (prop_y <= portal_y_ends[1]))
+                |
+                ((prop_y >= portal_y_starts[2] - self.consts.PLAYER_HEIGHT) & (prop_y <= portal_y_ends[2]))
+            )
+            in_portal_zone = in_upper_portal_zone | in_lower_portal_zone
             
-            # Cycle through maps: exit left → go left map, exit right → go right map
-            # Middle(0) → Left(1) → Middle(0) → Right(2) → Middle(0)
+            # Portal transitions:
+            # - From middle map: LU/RU (upper row) -> upper map (1), LM/LD/RM/RD -> lower map (2)
+            # - From upper/lower maps: any portal exit returns to middle map (0)
+            # - Special: from upper-right chamber, going up -> upper area of middle map (y=120)
             should_wrap_right = in_portal_zone & (prop_x <= 0)
             should_wrap_left = in_portal_zone & (prop_x >= self.consts.WORLD_WIDTH - self.consts.PLAYER_WIDTH)
             
-            # Track if player crossed portal (for zombie spawning)
-            crossed_portal = should_wrap_right | should_wrap_left
+            # Upper-right chamber exit upward: trigger when pushing up at the top gap.
+            top_gap_left = 85
+            top_gap_right = 100
+            in_upper_right_chamber = (
+                (state.map_index == 1)
+                & (prop_x >= top_gap_left)
+                & ((prop_x + self.consts.PLAYER_WIDTH) <= top_gap_right)
+            )
+            pushing_up_at_top_gap = (dy < 0) & (state.player_y <= self.consts.WALL_THICKNESS + 1)
+            upward_exit = in_upper_right_chamber & pushing_up_at_top_gap
             
-            # Update map_index based on which direction player exits.
-            # Right-edge cycle: middle(0) -> right(2) -> left(1) -> middle(0)
-            # Left-edge cycle:  middle(0) -> left(1)  -> right(2) -> middle(0)
-            map_after_left_exit = jnp.where(
-                state.map_index == 0,
-                1,
-                jnp.where(state.map_index == 1, 2, 0),
-            )
-            map_after_right_exit = jnp.where(
-                state.map_index == 0,
-                2,
-                jnp.where(state.map_index == 2, 1, 0),
-            )
+            # Track if player crossed portal (for zombie spawning)
+            crossed_portal = should_wrap_right | should_wrap_left | upward_exit
+            
+            from_middle_map = (state.map_index == 0)
+            middle_target_map = jnp.where(in_upper_portal_zone, 1, 2)
+            side_target_map = jnp.array(0, dtype=jnp.int32)
+            map_target_on_wrap = jnp.where(from_middle_map, middle_target_map, side_target_map)
             new_map_index = jnp.where(
-                should_wrap_right,
-                map_after_left_exit,
-                jnp.where(should_wrap_left, map_after_right_exit, state.map_index),
+                should_wrap_right | should_wrap_left,
+                map_target_on_wrap,
+                jnp.where(upward_exit, 0, state.map_index),  # upward exit always returns to middle (0)
             )
             
             # Teleport to opposite edge when crossing portal
             prop_x = jnp.where(should_wrap_right, self.consts.WORLD_WIDTH - self.consts.PLAYER_WIDTH - 2, prop_x)
             prop_x = jnp.where(should_wrap_left, 2, prop_x)
+            # Upward exit: teleport to upper area of middle map (safe upper chamber location)
+            prop_x = jnp.where(upward_exit, jnp.array(80, dtype=jnp.int32), prop_x)
+            prop_y = jnp.where(upward_exit, jnp.array(120, dtype=jnp.int32), prop_y)
             
             # Wall collision check - include boundary walls (with portal gaps)
             WALLS = jnp.concatenate(
@@ -3018,8 +3015,8 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
                     ),
                 )
 
-                portal_y_starts = jnp.array([178, 330, 378], dtype=jnp.int32)
-                portal_y_ends = jnp.array([210, 362, 410], dtype=jnp.int32)
+                portal_y_starts = jnp.array([240, 370, 500], dtype=jnp.int32)
+                portal_y_ends = jnp.array([271, 401, 531], dtype=jnp.int32)
                 in_portal_zone = jnp.any(
                     (clipped[1] >= (portal_y_starts - self.consts.ENEMY_HEIGHT))
                     & (clipped[1] <= portal_y_ends)
@@ -3038,11 +3035,11 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
             def apply_enemy_portal_keepout(pos):
                 """Clamp enemies away from portal entrances so they do not block traversal."""
                 portal_y_starts = jnp.array([
-                    178,
-                    330,
-                    378,
+                    240,
+                    370,
+                    500,
                 ], dtype=jnp.int32)
-                portal_y_ends = jnp.array([210, 362, 410], dtype=jnp.int32)
+                portal_y_ends = jnp.array([271, 401, 531], dtype=jnp.int32)
 
                 in_portal_lane = jnp.any(
                     (pos[1] >= (portal_y_starts - self.consts.ENEMY_HEIGHT))
@@ -5002,12 +4999,10 @@ class DarkChambersEnv(JaxEnvironment[DarkChambersState, DarkChambersObservation,
             enemy_bullet_in_view,
         ], axis=1)
 
-        portal_hole_height = 40
-        portal_gap = (self.consts.WORLD_HEIGHT - 3 * portal_hole_height) // 4
         portal_y_centers = jnp.array([
-            portal_gap + portal_hole_height // 2,
-            portal_gap * 2 + portal_hole_height + portal_hole_height // 2,
-            portal_gap * 3 + 2 * portal_hole_height + portal_hole_height // 2,
+            256,  # center of LU/RU portal (240-272)
+            386,  # center of LM/RM portal (370-402)
+            516,  # center of LD/RD portal (500-532)
         ], dtype=jnp.int32)
         portal_x = jnp.concatenate([
             jnp.zeros((3,), dtype=jnp.int32),
