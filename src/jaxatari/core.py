@@ -7,6 +7,21 @@ from jaxatari.renderers import JAXGameRenderer
 from jaxatari.modification import apply_modifications
 from jaxatari.wrappers import JaxatariWrapper
 
+from . import check_ownership
+
+
+def _warn_deprecated_obs_to_flat_array(env: JaxEnvironment) -> None:
+    """Warn if legacy obs_to_flat_array is present on the environment."""
+    if hasattr(env, "obs_to_flat_array") and callable(getattr(env, "obs_to_flat_array")):
+        warnings.warn(
+            "Environment exposes deprecated obs_to_flat_array(). "
+            "Observations should now be flax.struct.dataclasses using ObjectObservation "
+            "for objects or plain arrays for observations like lives, score, etc. "
+            "Depending on legacy obs_to_flat_array might lead to unforseen issues with wrappers.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
 
 
 # Map of game names to their module paths
@@ -39,6 +54,7 @@ GAME_MODULES = {
     "namethisgame": "jaxatari.games.jax_namethisgame",
     "phoenix": "jaxatari.games.jax_phoenix",
     "pong": "jaxatari.games.jax_pong",
+    "qbert": "jaxatari.games.jax_qbert",
     "riverraid": "jaxatari.games.jax_riverraid",
     "seaquest": "jaxatari.games.jax_seaquest",
     "sirlancelot": "jaxatari.games.jax_sirlancelot",
@@ -57,9 +73,6 @@ GAME_MODULES = {
     "videocube": "jaxatari.games.jax_videocube",
     "videopinball": "jaxatari.games.jax_videopinball",
     "wordzapper": "jaxatari.games.jax_wordzapper",
-
-    "darkchambers": "jaxatari.games.jax_darkchambers"
-
     # Add new games here
 }
 
@@ -70,9 +83,11 @@ MOD_MODULES = {
     "freeway": "jaxatari.games.mods.freeway_mods.FreewayEnvMod",
     "breakout": "jaxatari.games.mods.breakout_mods.BreakoutEnvMod",
     "seaquest": "jaxatari.games.mods.seaquest_mods.SeaquestEnvMod",
-    "darkchambers": "jaxatari.games.mods.darkchambers_mods.DarkchambersEnvMod",
     "videopinball": "jaxatari.games.mods.videopinball_mods.VideoPinballEnvMod",
     'tennis': "jaxatari.games.mods.tennis_mods.TennisEnvMod",
+    "fishingderby": "jaxatari.games.mods.fishingderby_mods.FishingDerbyEnvMod",
+    "atlantis": "jaxatari.games.mods.atlantis_mods.AtlantisEnvMod",
+    "bankheist": "jaxatari.games.mods.bankheist_mods.BankHeistEnvMod",
 }
 
 
@@ -84,14 +99,15 @@ def list_available_games() -> list[str]:
 def make(game_name: str, 
          mode: int = 0, 
          difficulty: int = 0,
-         mods_config: list = None,
+         mods_config: list = None, # deprecated, output warning if its used
+         mods: list = None,
          allow_conflicts: bool = False
          ) -> JaxEnvironment:
     """
     Creates and returns a JaxAtari game environment instance.
     This is the main entry point for creating environments.
 
-    If 'mods_config' is provided, this function applies the
+    If 'mods' is provided, this function applies the
     full two-stage modding pipeline:
     1. Pre-scans for constant overrides.
     2. Instantiates the base env with modded constants.
@@ -102,10 +118,25 @@ def make(game_name: str,
         game_name: Name of the game to load (e.g., "pong").
         mode: Game mode.
         difficulty: Game difficulty.
-
+        mods: List of modifications to apply (default: None).
+        allow_conflicts: Whether to allow conflicting mods (default: False).
     Returns:
         An instance of the specified game environment.
     """
+
+    check_ownership()  # Ensure ownership confirmed
+
+    if isinstance(game_name, str):
+        game_name = game_name.lower()
+
+    if mods_config is not None:
+        warnings.warn(
+            "'mods_config' is deprecated and will be removed in future versions. "
+            "Please use 'mods' instead.",
+            DeprecationWarning
+        )
+        mods = mods_config
+
     if game_name not in GAME_MODULES:
         raise NotImplementedError(
             f"The game '{game_name}' does not exist. Available games: {list_available_games()}"
@@ -126,16 +157,18 @@ def make(game_name: str,
         base_consts = env_class().consts
 
         # 3. Handle mods if requested
-        if mods_config:
+        if mods:
             try:
-                return apply_modifications(
+                env = apply_modifications(
                     game_name=game_name,
-                    mods_config=mods_config,
+                    mods_config=mods,
                     allow_conflicts=allow_conflicts,
                     base_consts=base_consts,
                     env_class=env_class,
                     MOD_MODULES=MOD_MODULES
                 )
+                _warn_deprecated_obs_to_flat_array(env)
+                return env
             except NotImplementedError as e:
                 # Mod module not defined for this game - fall back to base environment
                 warnings.warn(
@@ -145,7 +178,9 @@ def make(game_name: str,
                 )
 
         # No mods: return default base env with default constants
-        return env_class(consts=base_consts)
+        env = env_class(consts=base_consts)
+        _warn_deprecated_obs_to_flat_array(env)
+        return env
 
     except (ImportError, NotImplementedError) as e:
         # Only wrap registration/import errors - let intentional errors (ValueError, etc.) propagate
