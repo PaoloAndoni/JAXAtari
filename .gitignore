@@ -1,5 +1,7 @@
 env
-*__pycache__*
+__pycache__/
+**/__pycache__/
+*.py[cod]
 
 .venv
 .vscode
@@ -7,6 +9,7 @@ env
 *.bc
 results/
 .DS_Store
+**/.DS_Store
 docs/build/
 .python-version
 
